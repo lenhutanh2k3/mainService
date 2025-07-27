@@ -52,7 +52,7 @@ const user_controller = {
             if (password !== repeat_password) {
                 return response(res, 400, "Xác nhận mật khẩu không khớp.");
             }
-            if (password.length < 6) { // Thêm validation độ dài mật khẩu cho đăng ký
+            if (password.length < 6) { // Chỉ kiểm tra độ dài tối thiểu
                 return response(res, 400, 'Mật khẩu phải có ít nhất 6 ký tự.');
             }
 
@@ -403,21 +403,12 @@ const user_controller = {
                 return response(res, 400, 'Mật khẩu mới phải có ít nhất 6 ký tự.');
             }
 
-            // Validate mật khẩu mạnh cho reset password
-            const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
-            if (newPassword.length < 8) {
-                return response(res, 400, 'Mật khẩu mới phải có ít nhất 8 ký tự.');
-            }
-            if (!strongPasswordRegex.test(newPassword)) {
-                return response(res, 400, 'Mật khẩu mới phải có ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.');
-            }
-
-            user.password = newPassword; // Mongoose pre-save hook sẽ tự hash
+            user.password = newPassword; 
             user.otp = undefined;
             user.otpExpires = undefined;
             user.passwordChangeToken = undefined;
             user.passwordChangeTokenExpires = undefined;
-            user.refreshTokens = []; // Xóa tất cả session cũ
+            user.refreshTokens = []; 
             await user.save();
 
             res.clearCookie('refreshToken', {
@@ -634,11 +625,11 @@ const user_controller = {
             }
 
             user.isDeleted = true;
-            user.isActive = false;
+            // KHÔNG tự động set isActive = false để giữ nguyên trạng thái ban đầu
             user.refreshTokens = [];
             await user.save();
 
-            const userData = cleanUserData(user); // Trả về user đã cập nhật trạng thái
+            const userData = cleanUserData(user);
             return response(res, 200, 'Người dùng đã được xóa mềm thành công.', { user: userData });
         } catch (error) {
             console.error('Soft delete user error:', error);
@@ -658,11 +649,15 @@ const user_controller = {
             }
 
             user.isDeleted = false;
-            user.isActive = true;
+            // KHÔNG tự động set isActive = true để giữ nguyên trạng thái ban đầu
             await user.save();
 
-            const userData = cleanUserData(user); // Trả về user đã cập nhật trạng thái
-            return response(res, 200, 'Người dùng đã được khôi phục thành công.', { user: userData });
+            const userData = cleanUserData(user);
+            const message = user.isActive
+                ? 'Người dùng đã được khôi phục thành công và đang active.'
+                : 'Người dùng đã được khôi phục thành công nhưng vẫn inactive. Cần kích hoạt thêm.';
+
+            return response(res, 200, message, { user: userData });
         } catch (error) {
             console.error('Restore user error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi khôi phục người dùng.');
@@ -697,13 +692,15 @@ const user_controller = {
             if (!user) {
                 return response(res, 404, 'Người dùng không tồn tại.');
             }
-            if (user.isDeleted) {
-                return response(res, 400, 'Không thể thay đổi trạng thái tài khoản đã bị xóa. Vui lòng khôi phục trước.');
-            }
+
+            // CHO PHÉP thay đổi isActive ngay cả khi user đã bị soft delete
+            // Vì khi restore, admin có thể muốn set trạng thái active/inactive
             user.isActive = isActive;
             await user.save();
+
+            const statusMessage = isActive ? 'kích hoạt' : 'vô hiệu hóa';
             const userData = cleanUserData(user);
-            return response(res, 200, 'Cập nhật trạng thái người dùng thành công.', { user: userData });
+            return response(res, 200, `Người dùng đã được ${statusMessage} thành công.`, { user: userData });
         } catch (error) {
             console.error('Toggle user active status error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi cập nhật trạng thái người dùng.');
@@ -735,6 +732,39 @@ const user_controller = {
         } catch (error) {
             console.error('Get all roles error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi lấy danh sách vai trò.');
+        }
+    },
+    resendChangePasswordOtp: async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const user = await User.findById(userId);
+            if (!user) {
+                return response(res, 404, 'Người dùng không tồn tại.');
+            }
+            if (user.isDeleted) {
+                return response(res, 403, 'Tài khoản của bạn đã bị vô hiệu hóa.');
+            }
+            // Gửi lại OTP mới
+            const otp = generateOtp();
+            user.otp = otp;
+            user.otpExpires = Date.now() + 10 * 60 * 1000;
+            await user.save();
+            const mailOptions = {
+                to: user.email,
+                subject: 'Mã OTP xác nhận đổi mật khẩu',
+                html: `
+                    <p>Mã OTP của bạn để xác nhận đổi mật khẩu là: <strong>${otp}</strong></p>
+                    <p>Mã này sẽ hết hạn sau 10 phút. Vui lòng không chia sẻ mã này với bất kỳ ai.</p>
+                    <p>Nếu bạn không yêu cầu đổi mật khẩu, vui lòng bỏ qua email này.</p>
+                    <p>Trân trọng,</p>
+                    <p>Đội ngũ hỗ trợ của bạn</p>
+                `
+            };
+            await sendEmail(mailOptions.to, mailOptions.subject, '', mailOptions.html);
+            return response(res, 200, 'Mã OTP mới đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư đến.');
+        } catch (error) {
+            console.error('Resend change password OTP error:', error);
+            return response(res, 500, 'Lỗi server nội bộ khi gửi lại mã OTP.');
         }
     }
 };

@@ -148,7 +148,7 @@ export const validateVerifyOtpForPasswordChange = [
 export const validateConfirmChangePassword = [
     body('passwordChangeToken')
         .notEmpty().withMessage('Token đổi mật khẩu không được để trống'),
-    body('currentPassword') // THÊM TRƯỜNG NÀY
+    body('currentPassword')
         .notEmpty().withMessage('Mật khẩu hiện tại không được để trống'),
     body('newPassword')
         .notEmpty().withMessage('Mật khẩu mới không được để trống')

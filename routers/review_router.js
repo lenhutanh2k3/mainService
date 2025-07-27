@@ -13,8 +13,7 @@ router.get('/admin/all', check_Token, check_admin, review_controller.getAllRevie
 // Lấy danh sách đánh giá đã ẩn (admin)
 router.get('/admin/hidden', check_Token, check_admin, review_controller.getHiddenReviews);
 
-// Thống kê đánh giá (admin)
-router.get('/admin/stats', check_Token, check_admin, review_controller.getReviewStats);
+
 
 // Ẩn đánh giá (admin)
 router.put('/admin/:id/hide', check_Token, check_admin, review_controller.hideReview);
@@ -44,6 +43,9 @@ router.get('/user/all', check_Token, review_controller.getUserReviews);
 
 // Lấy đánh giá của một sách (public)
 router.get('/book/:bookId', review_controller.getBookReviews);
+
+// Lấy trung bình rating của một sách (public)
+router.get('/book/:bookId/average-rating', review_controller.getAverageRatingForBook);
 
 // Đánh dấu đánh giá là hữu ích (yêu cầu đăng nhập)
 router.post('/:id/helpful', check_Token, review_controller.markReviewHelpful);

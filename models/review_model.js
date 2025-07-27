@@ -89,9 +89,9 @@ ReviewSchema.post('save', async function (doc) {
     try {
         // Gọi API đến bookService để cập nhật rating trung bình
         const axios = (await import('axios')).default;
-        const BOOK_SERVICE = process.env.BOOK_SERVICE || 'http://localhost:8000';
+        const BOOK_SERVICE_URL = process.env.BOOK_SERVICE_URL || 'http://localhost:8000';
 
-        await axios.post(`${BOOK_SERVICE}/api/books/${doc.bookId}/update-rating`, {
+        await axios.post(`${BOOK_SERVICE_URL}/api/books/${doc.bookId}/update-rating`, {
             reviewId: doc._id,
             rating: doc.rating,
             action: 'add'
@@ -105,9 +105,9 @@ ReviewSchema.post('findOneAndUpdate', async function (doc) {
     if (doc && doc.rating) {
         try {
             const axios = (await import('axios')).default;
-            const BOOK_SERVICE = process.env.BOOK_SERVICE || 'http://localhost:8000';
+            const BOOK_SERVICE_URL = process.env.BOOK_SERVICE_URL || 'http://localhost:8000';
 
-            await axios.post(`${BOOK_SERVICE}/api/books/${doc.bookId}/update-rating`, {
+            await axios.post(`${BOOK_SERVICE_URL}/api/books/${doc.bookId}/update-rating`, {
                 reviewId: doc._id,
                 rating: doc.rating,
                 action: 'update'
@@ -122,9 +122,9 @@ ReviewSchema.post('findOneAndDelete', async function (doc) {
     if (doc) {
         try {
             const axios = (await import('axios')).default;
-            const BOOK_SERVICE = process.env.BOOK_SERVICE || 'http://localhost:8000';
+            const BOOK_SERVICE_URL = process.env.BOOK_SERVICE_URL || 'http://localhost:8000';
 
-            await axios.post(`${BOOK_SERVICE}/api/books/${doc.bookId}/update-rating`, {
+            await axios.post(`${BOOK_SERVICE_URL}/api/books/${doc.bookId}/update-rating`, {
                 reviewId: doc._id,
                 rating: doc.rating,
                 action: 'remove'

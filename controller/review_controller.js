@@ -4,7 +4,7 @@ import axios from 'axios';
 import mongoose from 'mongoose';
 
 const ORDER_SERVICE = process.env.ORDER_SERVICE || 'http://localhost:8001';
-const BOOK_SERVICE = process.env.BOOK_SERVICE || 'http://localhost:8000';
+const BOOK_SERVICE = process.env.BOOK_SERVICE_URL || 'http://localhost:8000';
 
 const review_controller = {
     // Tạo đánh giá mới
@@ -633,61 +633,29 @@ const review_controller = {
         }
     },
 
-    // Thống kê đánh giá (admin)
-    getReviewStats: async (req, res, next) => {
-        try {
-            const [
-                totalReviews,
-                hiddenReviews,
-                todayReviews,
-                thisWeekReviews,
-                thisMonthReviews
-            ] = await Promise.all([
-                Review.countDocuments({ isHidden: false }),
-                Review.countDocuments({ isHidden: true }),
-                Review.countDocuments({
-                    createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-                    isHidden: false
-                }),
-                Review.countDocuments({
-                    createdAt: { $gte: new Date(new Date().setDate(new Date().getDate() - 7)) },
-                    isHidden: false
-                }),
-                Review.countDocuments({
-                    createdAt: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
-                    isHidden: false
-                })
-            ]);
 
-            // Thống kê rating
-            const ratingStats = await Review.aggregate([
-                { $match: { isHidden: false } },
+
+    // Lấy trung bình rating cho 1 sách (chỉ tính review hợp lệ)
+    getAverageRatingForBook: async (req, res, next) => {
+        try {
+            const { bookId } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(bookId)) {
+                return response(res, 400, 'bookId không hợp lệ');
+            }
+            const match = { bookId: new mongoose.Types.ObjectId(bookId), isHidden: false };
+            const stats = await Review.aggregate([
+                { $match: match },
                 {
                     $group: {
-                        _id: '$rating',
-                        count: { $sum: 1 }
+                        _id: null,
+                        averageRating: { $avg: '$rating' },
+                        totalReviews: { $sum: 1 }
                     }
-                },
-                { $sort: { _id: -1 } }
+                }
             ]);
-
-            const ratingDistribution = {};
-            for (let i = 5; i >= 1; i--) {
-                const stat = ratingStats.find(s => s._id === i);
-                ratingDistribution[i] = stat ? stat.count : 0;
-            }
-
-            return response(res, 200, 'Lấy thống kê đánh giá thành công', {
-                stats: {
-                    total: totalReviews,
-                    hidden: hiddenReviews,
-                    today: todayReviews,
-                    thisWeek: thisWeekReviews,
-                    thisMonth: thisMonthReviews
-                },
-                ratingDistribution
-            });
-
+            const averageRating = stats[0]?.averageRating || 0;
+            const totalReviews = stats[0]?.totalReviews || 0;
+            return response(res, 200, 'Lấy trung bình rating thành công', { averageRating, totalReviews });
         } catch (error) {
             next(error);
         }

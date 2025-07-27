@@ -20,6 +20,7 @@ router.post('/forgot-password/reset', userController.resetPassword);
 
 // Change Password (Requires login)
 router.post('/change-password/request-otp', check_Token, userController.requestChangePasswordOtp);
+router.post('/change-password/resend-otp', check_Token, userController.resendChangePasswordOtp); // Gửi lại mã OTP đổi mật khẩu
 router.post('/change-password/confirm', check_Token, userController.confirmChangePassword);
 
 // User Profile (Requires login)
