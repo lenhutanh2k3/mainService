@@ -42,6 +42,11 @@ const ReviewSchema = new Schema({
         default: false,
         index: true
     },
+    hiddenReason: {
+        type: String,
+        enum: ['user_deleted', 'user_action', 'admin_action'],
+        default: undefined
+    },
     helpfulCount: {
         type: Number,
         default: 0

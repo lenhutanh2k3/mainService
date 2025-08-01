@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { sendEmail } from '../utils/email.js';
 import fs from 'fs';
+import Review from '../models/review_model.js';
 
 dotenv.config();
 
@@ -25,12 +26,11 @@ const cleanUserData = (userDoc) => {
     // Đảm bảo role luôn là object với id và name
     if (cleanedUser.role && typeof cleanedUser.role === 'object') {
         cleanedUser.role = {
-            id: cleanedUser.role._id.toString(), // Chuyển ObjectId sang string
+            id: cleanedUser.role._id.toString(), 
             name: cleanedUser.role.roleName
         };
-    } else if (cleanedUser.role) { // Trường hợp role là ObjectId nhưng chưa được populate
-        // Có thể cần thêm logic populate role nếu không muốn gọi lại DB mỗi lần cleanData
-        // Hiện tại, nếu không phải object, ta sẽ giả định không có role hoặc lỗi.
+    } else if (cleanedUser.role) { 
+   
         cleanedUser.role = null;
     } else {
         cleanedUser.role = null;
@@ -80,7 +80,6 @@ const user_controller = {
         try {
             const { email, password } = req.body;
             const user = await User.findOne({ email }).populate('role');
-            console.log(user);
             if (!user || !bcrypt.compareSync(password, user.password)) {
                 return response(res, 401, 'Email hoặc mật khẩu không đúng.');
             }
@@ -403,12 +402,12 @@ const user_controller = {
                 return response(res, 400, 'Mật khẩu mới phải có ít nhất 6 ký tự.');
             }
 
-            user.password = newPassword; 
+            user.password = newPassword;
             user.otp = undefined;
             user.otpExpires = undefined;
             user.passwordChangeToken = undefined;
             user.passwordChangeTokenExpires = undefined;
-            user.refreshTokens = []; 
+            user.refreshTokens = [];
             await user.save();
 
             res.clearCookie('refreshToken', {
@@ -629,6 +628,12 @@ const user_controller = {
             user.refreshTokens = [];
             await user.save();
 
+            // Ẩn tất cả review của user này (nếu chưa bị ẩn), gắn lý do user_deleted
+            await Review.updateMany(
+                { userId: id, isHidden: false },
+                { $set: { isHidden: true, hiddenReason: 'user_deleted' } }
+            );
+
             const userData = cleanUserData(user);
             return response(res, 200, 'Người dùng đã được xóa mềm thành công.', { user: userData });
         } catch (error) {
@@ -651,6 +656,12 @@ const user_controller = {
             user.isDeleted = false;
             // KHÔNG tự động set isActive = true để giữ nguyên trạng thái ban đầu
             await user.save();
+
+            // Hiện lại các review bị ẩn do user_deleted
+            await Review.updateMany(
+                { userId: id, isHidden: true, hiddenReason: 'user_deleted' },
+                { $set: { isHidden: false }, $unset: { hiddenReason: '' } }
+            );
 
             const userData = cleanUserData(user);
             const message = user.isActive
