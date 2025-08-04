@@ -49,6 +49,22 @@ const UserSchema = new Schema({
         default: false,
         index: true
     },
+    deleteReason: { // Lý do xóa tài khoản
+        type: String,
+        default: null
+    },
+    deletedAt: { // Thời gian xóa tài khoản
+        type: Date,
+        default: null
+    },
+    deactivationReason: { // Lý do vô hiệu hóa tài khoản
+        type: String,
+        default: null
+    },
+    deactivatedAt: { // Thời gian vô hiệu hóa tài khoản
+        type: Date,
+        default: null
+    },
     otp: { // OTP cho xác thực đổi mật khẩu và quên mật khẩu
         type: String,
         default: null

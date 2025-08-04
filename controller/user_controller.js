@@ -7,7 +7,7 @@ import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
-import { sendEmail } from '../utils/email.js';
+import { sendEmail, createAccountDeletionEmail } from '../utils/email.js';
 import fs from 'fs';
 import Review from '../models/review_model.js';
 
@@ -26,15 +26,26 @@ const cleanUserData = (userDoc) => {
     // Đảm bảo role luôn là object với id và name
     if (cleanedUser.role && typeof cleanedUser.role === 'object') {
         cleanedUser.role = {
-            id: cleanedUser.role._id.toString(), 
+            id: cleanedUser.role._id.toString(),
             name: cleanedUser.role.roleName
         };
-    } else if (cleanedUser.role) { 
-   
+    } else if (cleanedUser.role) {
+
         cleanedUser.role = null;
     } else {
         cleanedUser.role = null;
     }
+
+    // Format deletedAt nếu có
+    if (cleanedUser.deletedAt) {
+        cleanedUser.deletedAt = new Date(cleanedUser.deletedAt).toISOString();
+    }
+
+    // Format deactivatedAt nếu có
+    if (cleanedUser.deactivatedAt) {
+        cleanedUser.deactivatedAt = new Date(cleanedUser.deactivatedAt).toISOString();
+    }
+
     return cleanedUser;
 };
 
@@ -614,6 +625,7 @@ const user_controller = {
     softDeleteUser: async (req, res) => {
         try {
             const { id } = req.params;
+            const { reason } = req.body; // Thêm tham số reason
 
             const user = await User.findById(id);
             if (!user) {
@@ -624,8 +636,14 @@ const user_controller = {
             }
 
             user.isDeleted = true;
-            // KHÔNG tự động set isActive = false để giữ nguyên trạng thái ban đầu
             user.refreshTokens = [];
+
+            // Nếu có reason thì lưu thông tin
+            if (reason) {
+                user.deleteReason = reason;
+                user.deletedAt = new Date();
+            }
+
             await user.save();
 
             // Ẩn tất cả review của user này (nếu chưa bị ẩn), gắn lý do user_deleted
@@ -634,8 +652,42 @@ const user_controller = {
                 { $set: { isHidden: true, hiddenReason: 'user_deleted' } }
             );
 
+            // Gửi email nếu có reason
+            let emailSent = false;
+            if (reason) {
+                const websiteName = process.env.WEBSITE_NAME || 'BookStore';
+                const supportEmail = process.env.SUPPORT_EMAIL || 'support@bookstore.com';
+                const supportPhone = process.env.SUPPORT_PHONE || '0123 456 789';
+
+                const emailHtml = createAccountDeletionEmail(
+                    user.fullName || 'Người dùng',
+                    websiteName,
+                    user.deletedAt,
+                    user.deleteReason,
+                    supportEmail,
+                    supportPhone
+                );
+
+                emailSent = await sendEmail(
+                    user.email,
+                    `Thông báo xóa tài khoản - ${websiteName}`,
+                    '',
+                    emailHtml
+                );
+            }
+
             const userData = cleanUserData(user);
-            return response(res, 200, 'Người dùng đã được xóa mềm thành công.', { user: userData });
+            const message = reason
+                ? (emailSent
+                    ? 'Người dùng đã được xóa mềm thành công và email thông báo đã được gửi.'
+                    : 'Người dùng đã được xóa mềm thành công nhưng không thể gửi email thông báo.')
+                : 'Người dùng đã được xóa mềm thành công.';
+
+            return response(res, 200, message, {
+                user: userData,
+                emailSent: emailSent,
+                hasReason: !!reason
+            });
         } catch (error) {
             console.error('Soft delete user error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi xóa mềm người dùng.');
@@ -654,6 +706,8 @@ const user_controller = {
             }
 
             user.isDeleted = false;
+            user.deleteReason = null; // Xóa lý do xóa
+            user.deletedAt = null; // Xóa thời gian xóa
             // KHÔNG tự động set isActive = true để giữ nguyên trạng thái ban đầu
             await user.save();
 
@@ -697,21 +751,101 @@ const user_controller = {
     toggleUserActiveStatus: async (req, res) => {
         try {
             const { id } = req.params;
-            const { isActive } = req.body;
+            const { isActive, reason } = req.body; // Thêm tham số reason
 
             const user = await User.findById(id);
             if (!user) {
                 return response(res, 404, 'Người dùng không tồn tại.');
             }
 
-            // CHO PHÉP thay đổi isActive ngay cả khi user đã bị soft delete
-            // Vì khi restore, admin có thể muốn set trạng thái active/inactive
+
             user.isActive = isActive;
+
+            // Lưu lý do vô hiệu hóa nếu có
+            if (reason && !isActive) {
+                user.deactivationReason = reason;
+                user.deactivatedAt = new Date();
+            } else if (isActive) {
+                // Nếu kích hoạt lại thì xóa lý do vô hiệu hóa
+                user.deactivationReason = null;
+                user.deactivatedAt = null;
+            }
+
             await user.save();
 
+            // Gửi email thông báo vô hiệu hóa nếu có reason và đang vô hiệu hóa
+            let emailSent = false;
+            if (reason && !isActive) {
+                const websiteName = process.env.WEBSITE_NAME || 'BookStore';
+                const supportEmail = process.env.SUPPORT_EMAIL || 'support@bookstore.com';
+                const supportPhone = process.env.SUPPORT_PHONE || '0123 456 789';
+
+                const deactivationDate = new Date();
+                const emailHtml = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                        <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            <h2 style="color: #333; text-align: center; margin-bottom: 30px;">Thông Báo Vô Hiệu Hóa Tài Khoản</h2>
+
+                            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                                Chào <strong>${user.fullName || 'Người dùng'}</strong>,
+                            </p>
+
+                            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                                Chúng tôi thông báo rằng tài khoản của bạn tại <strong>${websiteName}</strong> đã bị vô hiệu hóa vào <strong>${deactivationDate.toLocaleString('vi-VN')}</strong>.
+                            </p>
+
+                            ${reason ? `<p style="color: #555; font-size: 16px; line-height: 1.6;">
+                                <strong>Lý do:</strong> ${reason}
+                            </p>` : ''}
+
+                            <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
+                                <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0;">
+                                    ⚠️ <strong>Tài khoản của bạn đã bị vô hiệu hóa.</strong> Bạn không thể đăng nhập vào hệ thống cho đến khi tài khoản được kích hoạt lại.
+                                </p>
+                            </div>
+
+                            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                                Nếu bạn có thắc mắc hoặc muốn kích hoạt lại tài khoản, hãy liên hệ với chúng tôi tại:
+                            </p>
+
+                            <div style="background-color: #e8f4fd; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                                <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 5px 0;">
+                                    📧 <strong>Email:</strong> ${supportEmail}
+                                </p>
+                                <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 5px 0;">
+                                    📞 <strong>Điện thoại:</strong> ${supportPhone}
+                                </p>
+                            </div>
+
+                            <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                                Thân mến,<br>
+                                <strong>Đội ngũ ${websiteName}</strong>
+                            </p>
+                        </div>
+                    </div>
+                `;
+
+                emailSent = await sendEmail(
+                    user.email,
+                    `Thông báo vô hiệu hóa tài khoản - ${websiteName}`,
+                    '',
+                    emailHtml
+                );
+            }
             const statusMessage = isActive ? 'kích hoạt' : 'vô hiệu hóa';
             const userData = cleanUserData(user);
-            return response(res, 200, `Người dùng đã được ${statusMessage} thành công.`, { user: userData });
+            let message = `Người dùng đã được ${statusMessage} thành công.`;
+            if (reason && !isActive) {
+                message = emailSent
+                    ? `Người dùng đã được ${statusMessage} thành công và email thông báo đã được gửi.`
+                    : `Người dùng đã được ${statusMessage} thành công nhưng không thể gửi email thông báo.`;
+            }
+
+            return response(res, 200, message, {
+                user: userData,
+                emailSent: emailSent,
+                hasReason: !!reason
+            });
         } catch (error) {
             console.error('Toggle user active status error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi cập nhật trạng thái người dùng.');
@@ -777,7 +911,8 @@ const user_controller = {
             console.error('Resend change password OTP error:', error);
             return response(res, 500, 'Lỗi server nội bộ khi gửi lại mã OTP.');
         }
-    }
+    },
+
 };
 
 export default user_controller;

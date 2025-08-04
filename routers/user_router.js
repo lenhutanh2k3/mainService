@@ -37,6 +37,7 @@ router.post('/', check_Token, check_admin, upload.single('profilePicture'), user
 router.get('/:id', check_Token, userController.getUserById); // GET user by ID (can include deleted)
 router.put('/:id', check_Token, check_admin, upload.single('profilePicture'), userController.updateUserByAdmin); // UPDATE user by ID
 router.put('/soft-delete/:id', check_Token, check_admin, userController.softDeleteUser); // SOFT DELETE user
+
 router.put('/restore/:id', check_Token, check_admin, userController.restoreUser); // RESTORE user
 router.delete('/:id', check_Token, check_admin, userController.deleteUser); // HARD DELETE user (cẩn thận khi dùng)
 router.put('/status/:id', check_Token, check_admin, userController.toggleUserActiveStatus); // TOGGLE user active status
