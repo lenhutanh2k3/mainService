@@ -8,7 +8,6 @@ export const check_Token = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-
     if (!token) {
         console.log('No token provided');
         return response(res, 401, 'Token không được cung cấp');
@@ -53,7 +52,7 @@ export const check_authenticated_user = async (req, res, next) => {
 };
 // Middleware chỉ cho phép ADMIN
 export const check_admin = async (req, res, next) => {
-    console.log('check_admin middleware called');
+    
     if (!req.user || !req.user.id) {
         console.log('No user or user.id found');
         return response(res, 401, 'Thông tin người dùng không hợp lệ trong token. Vui lòng đăng nhập lại.');
@@ -69,7 +68,7 @@ export const check_admin = async (req, res, next) => {
             console.log('User is deleted');
             return response(res, 403, 'Tài khoản của bạn đã bị vô hiệu hóa.');
         }
-        console.log('User role:', user.role);
+    
         if (user.role && user.role.roleName === 'admin') {
             req.user.roleName = user.role.roleName;
             next();

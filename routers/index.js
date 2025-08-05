@@ -9,6 +9,6 @@ const router = (app) => {
     app.use('/api/address', address_router);
     app.use('/api/email', email_router);
     app.use('/api/reviews', review_router);
-  
+
 }
 export default router;

@@ -101,7 +101,7 @@ const user_controller = {
                 return response(res, 403, 'Tài khoản của bạn đã bị xóa. Vui lòng liên hệ hỗ trợ để khôi phục.');
             }
             const payload = { id: user._id, role: user.role.roleName };
-            const accessToken = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '30m' });
+            const accessToken = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '2h' });
             const refreshToken = jwt.sign(payload, process.env.REFRESH_KEY, { expiresIn: '7d' });
 
             user.refreshTokens = user.refreshTokens || [];
@@ -161,7 +161,7 @@ const user_controller = {
             }
 
             const payload = { id: user._id, role: user.role.roleName };
-            const newAccessToken = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '30m' }); // Tăng thời gian sống
+            const newAccessToken = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '2h' }); // Tăng thời gian sống
             console.log('[AUTH] New access token generated successfully.');
             return response(res, 200, 'Cấp mới access token thành công', { accessToken: newAccessToken });
         } catch (error) {
@@ -912,6 +912,40 @@ const user_controller = {
             return response(res, 500, 'Lỗi server nội bộ khi gửi lại mã OTP.');
         }
     },
+
+    // Lấy tổng doanh thu
+    getTotalRevenue: async (req, res) => {
+        try {
+            const axios = (await import('axios')).default;
+            const ORDER_SERVICE = process.env.ORDER_SERVICE_URL || 'http://localhost:8001';
+
+            // Gọi API từ orderService để lấy tổng doanh thu
+            const orderResponse = await axios.get(`${ORDER_SERVICE}/api/order/total-revenue`, {
+                headers: { Authorization: req.headers.authorization }
+            });
+
+            return response(res, 200, 'Lấy tổng doanh thu thành công', {
+                totalRevenue: orderResponse.data.data.totalRevenue || 0
+            });
+        } catch (error) {
+            console.error('Get total revenue error:', error);
+            return response(res, 500, 'Lỗi server nội bộ khi lấy tổng doanh thu.');
+        }
+    },
+
+    // Lấy số lượng tài khoản đã xóa mềm
+    getDeletedUsersCount: async (req, res) => {
+        try {
+            const deletedUsersCount = await User.countDocuments({ isDeleted: true });
+
+            return response(res, 200, 'Lấy số lượng tài khoản đã xóa thành công', {
+                deletedUsersCount
+            });
+        } catch (error) {
+            console.error('Get deleted users count error:', error);
+            return response(res, 500, 'Lỗi server nội bộ khi lấy số lượng tài khoản đã xóa.');
+        }
+    }
 
 };
 

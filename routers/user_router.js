@@ -31,6 +31,10 @@ router.put('/profile', check_Token, upload.single('profilePicture'), validateUpd
 // Route để lấy danh sách roles
 router.get('/roles', check_Token, check_admin, userController.getAllRoles);
 
+// Dashboard routes (phải đặt trước route /:id)
+router.get('/total-revenue', check_Token, check_admin, userController.getTotalRevenue); // GET total revenue
+router.get('/deleted-count', check_Token, check_admin, userController.getDeletedUsersCount); // GET deleted users count
+
 // Admin: Quản lý người dùng
 router.get('/', check_Token, check_admin, userController.getAllUsers); // GET all users (can include deleted)
 router.post('/', check_Token, check_admin, upload.single('profilePicture'), userController.createUserByAdmin); // CREATE new user by admin
